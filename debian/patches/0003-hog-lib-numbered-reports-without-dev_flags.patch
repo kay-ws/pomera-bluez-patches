@@ -1,0 +1,50 @@
+Description: hog-lib: detect numbered reports when UHID_START has no dev_flags
+ dev_flags in UHID_START was added in Linux 3.11.  On older kernels it always
+ reads back as zero, so report IDs are stripped from every input report and
+ the HID core cannot match them: notifications arrive but nothing reaches
+ /dev/input/eventN.
+ .
+ When dev_flags is zero, fall back to the Report Reference descriptor ID.  The
+ HID Service specification requires the Report ID to be nonzero when there is
+ more than one Report characteristic of a type, so a nonzero ID means the
+ device uses numbered reports.
+Author: kay <a3.works@gmail.com>
+Forwarded: not-needed
+Last-Update: 2026-09-28
+---
+--- a/profiles/input/hog-lib.c
++++ b/profiles/input/hog-lib.c
+@@ -817,6 +817,24 @@
+ 	}
+ }
+ 
++/* Fallback for kernels that do not report dev_flags in UHID_START (added in
++ * 3.11): the NUMBERED_*_REPORTS bits always read back as zero there, which
++ * would make us strip the report ID from every notification and leave the HID
++ * core unable to match the report.
++ *
++ * BLUETOOTH SPECIFICATION, HID Service: "Report ID shall be nonzero in a
++ * Report Reference characteristic descriptor where there is more than one
++ * instance of the Report characteristic for any given Report Type" -- so a
++ * nonzero ID read from the descriptor means the device uses numbered reports.
++ */
++static void set_numbered_by_id(void *data, void *user_data)
++{
++	struct report *report = data;
++
++	if (report->id)
++		report->numbered = true;
++}
++
+ static bool input_dequeue(const void *data, const void *match_data)
+ {
+ 	const struct uhid_event *ev = data;
+@@ -843,6 +861,8 @@
+ 
+ 	if (hog->uhid_flags)
+ 		g_slist_foreach(hog->reports, set_numbered, hog);
++	else
++		g_slist_foreach(hog->reports, set_numbered_by_id, hog);
+ 
+ 	queue_remove_all(hog->input, input_dequeue, hog, free);
+ }

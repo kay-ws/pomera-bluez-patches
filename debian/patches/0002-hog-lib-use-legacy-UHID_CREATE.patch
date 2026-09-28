@@ -1,0 +1,77 @@
+Description: hog-lib: use the legacy UHID_CREATE
+ UHID_CREATE2 was added in Linux 3.19.  Older kernels reject it, and HID over
+ GATT devices fail to create their uHID device:
+ .
+   bt_uhid_send: Operation not supported
+ .
+ Use the legacy UHID_CREATE, which passes the report descriptor by pointer.
+ profiles/input/device.c already issues the same legacy call for BR/EDR HID.
+Author: kay <a3.works@gmail.com>
+Forwarded: not-needed
+Last-Update: 2026-09-28
+---
+--- a/profiles/input/hog-lib.c
++++ b/profiles/input/hog-lib.c
+@@ -1033,13 +1033,23 @@
+ 		return;
+ 	}
+ 
+-	/* create uHID device */
++	/* create uHID device
++	 *
++	 * UHID_CREATE2 was added in kernel 3.19 and older kernels reject it
++	 * with EOPNOTSUPP.  The legacy UHID_CREATE passes the report
++	 * descriptor by pointer instead of inlining it; the kernel copies it
++	 * in during write(), so 'value' only has to stay valid across the
++	 * bt_uhid_send() call below.  profiles/input/device.c issues the same
++	 * legacy call for BR/EDR HID.  The size limit above still refers to
++	 * create2.rd_data because that array is what spells out the kernel's
++	 * HID_MAX_DESCRIPTOR_SIZE; both requests share the same limit.
++	 */
+ 	memset(&ev, 0, sizeof(ev));
+-	ev.type = UHID_CREATE2;
++	ev.type = UHID_CREATE;
+ 
+ 	bt_io_get(g_attrib_get_channel(hog->attrib), &gerr,
+-			BT_IO_OPT_SOURCE, ev.u.create2.phys,
+-			BT_IO_OPT_DEST, ev.u.create2.uniq,
++			BT_IO_OPT_SOURCE, ev.u.create.phys,
++			BT_IO_OPT_DEST, ev.u.create.uniq,
+ 			BT_IO_OPT_INVALID);
+ 
+ 	if (gerr) {
+@@ -1050,22 +1060,21 @@
+ 
+ 	/* Phys + uniq are the same size (hw address type) */
+ 	for (i = 0;
+-	    i < (int)sizeof(ev.u.create2.phys) && ev.u.create2.phys[i] != 0;
++	    i < (int)sizeof(ev.u.create.phys) && ev.u.create.phys[i] != 0;
+ 	    ++i) {
+-		ev.u.create2.phys[i] = tolower(ev.u.create2.phys[i]);
+-		ev.u.create2.uniq[i] = tolower(ev.u.create2.uniq[i]);
++		ev.u.create.phys[i] = tolower(ev.u.create.phys[i]);
++		ev.u.create.uniq[i] = tolower(ev.u.create.uniq[i]);
+ 	}
+ 
+-	strncpy((char *) ev.u.create2.name, hog->name,
+-						sizeof(ev.u.create2.name) - 1);
+-	ev.u.create2.vendor = hog->vendor;
+-	ev.u.create2.product = hog->product;
+-	ev.u.create2.version = hog->version;
+-	ev.u.create2.country = hog->bcountrycode;
+-	ev.u.create2.bus = BUS_BLUETOOTH;
+-	ev.u.create2.rd_size = vlen;
+-
+-	memcpy(ev.u.create2.rd_data, value, vlen);
++	strncpy((char *) ev.u.create.name, hog->name,
++						sizeof(ev.u.create.name) - 1);
++	ev.u.create.vendor = hog->vendor;
++	ev.u.create.product = hog->product;
++	ev.u.create.version = hog->version;
++	ev.u.create.country = hog->bcountrycode;
++	ev.u.create.bus = BUS_BLUETOOTH;
++	ev.u.create.rd_data = value;
++	ev.u.create.rd_size = vlen;
+ 
+ 	err = bt_uhid_send(hog->uhid, &ev);
+ 	if (err < 0) {

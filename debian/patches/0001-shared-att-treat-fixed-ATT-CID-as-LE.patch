@@ -1,0 +1,39 @@
+Description: shared/att: treat the fixed ATT CID as LE
+ Linux 3.10 does not fill in l2_bdaddr_type in getsockname() for L2CAP
+ sockets, so an LE ATT socket reads back as BDADDR_BREDR and io_get_type()
+ misdetects the link as BR/EDR.  As a result the MTU is not fixed to the LE
+ default, Exchange MTU is suppressed, and long attribute reads stop after the
+ first PDU.  With HID over GATT this truncates the Report Map at 22 bytes:
+ .
+   hid-generic: unbalanced collection at end of report description
+ .
+ The fixed ATT CID (4) is LE-only, and l2_cid is reported correctly by the
+ kernel, so check it first.
+Author: kay <a3.works@gmail.com>
+Forwarded: not-needed
+Last-Update: 2026-09-28
+---
+--- a/src/shared/att.c
++++ b/src/shared/att.c
+@@ -1171,6 +1171,21 @@
+ 	if (getsockname(fd, (void *)&src, &len) < 0)
+ 		return -errno;
+ 
++	/* Some kernels (e.g. 3.10) do not fill in l2_bdaddr_type in
++	 * getsockname(), so an LE socket is indistinguishable from a BR/EDR
++	 * one by that field alone -- it reads back as BDADDR_BREDR (0).
++	 * Misdetecting the link as BR/EDR is not harmless: the Exchange MTU
++	 * sub-procedure gets suppressed (correctly, for BR/EDR) and the MTU is
++	 * taken from L2CAP_OPTIONS instead of BT_ATT_DEFAULT_LE_MTU, which
++	 * breaks long attribute reads.
++	 *
++	 * The ATT fixed CID is LE-only (BR/EDR carries ATT over PSM 31 with a
++	 * dynamically assigned CID), and the kernel does report l2_cid
++	 * correctly, so trust that first.
++	 */
++	if (src.l2_cid == htobs(BT_ATT_CID))
++		return BT_ATT_LE;
++
+ 	if (src.l2_bdaddr_type == BDADDR_BREDR)
+ 		return BT_ATT_BREDR;
+ 
