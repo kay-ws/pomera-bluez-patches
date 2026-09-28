@@ -97,6 +97,15 @@ sudo apt-mark hold bluez libbluetooth3 bluez-obexd
 
 DM250 では、差分ビルド（2回目以降）で約11分かかりました。初回はもっとかかります。
 
+`libbluetooth-dev` を入れている場合は、同じビルドでできた `libbluetooth-dev_*local1_armhf.deb` も一緒に入れて、hold してください。`libbluetooth-dev` は `libbluetooth3` と完全に同じ版を要求するので、版がそろっていないと依存関係のエラーで `apt` の更新が全部止まります。
+
+```
+libbluetooth-dev : Depends: libbluetooth3 (= 5.66-1+deb12u2) but 5.66-1+deb12u2local1 is installed
+E: Unmet dependencies. Try 'apt --fix-broken install' with no packages (or specify a solution).
+```
+
+入っているかどうかは `dpkg -l libbluetooth-dev` で確かめられます。このエラーが出ても `apt --fix-broken install` は打たないでください。`libbluetooth-dev` を消すか、`libbluetooth3` をパッチの無い版に戻そうとします。
+
 `apt-mark hold` をしておかないと、Debian のセキュリティ更新（`deb12u3` など）が来たときに、パッチの無い版で上書きされます。更新が出たら、新しい版のソースで同じ手順をやり直してください。
 
 ## ライセンス
